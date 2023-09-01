@@ -12,9 +12,9 @@ client_sending_3 = socket.socket()
 client_rcving_4 = socket.socket()
 client_sending_4 = socket.socket()
 
-port2_rcving = 10010
-port3_rcving = 10011
-port4_rcving = 10012
+port2_rcving = 10000
+port3_rcving = 10001
+port4_rcving = 10002
 # port2_sending = 10011
 host_rcving_2=""
 host_rcving_3=""
@@ -172,7 +172,7 @@ def worker_function(i):
 
     conn,addr = receving_end_clients[i].accept()
     # inp = addr[0] + ":" + str(10008)
-    sending_end_clients[i].connect((addr[0],10000+i))
+    # sending_end_clients[i].connect((addr[0],10000+i))
     print("Client to Client connection established","| IP " , addr[0])
     while True :
         response = str(conn.recv(4096),"utf-8")
