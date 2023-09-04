@@ -7,7 +7,7 @@ lines = {}
 
 MAX_LINES = 1000
 
-clients_info = ["192.168.105.79:10000"]
+clients_info = ["10.194.7.175:10000"]
 # clients_info = []
 OTHER_CLIENTS = len(clients_info)
 
@@ -62,7 +62,7 @@ def worker_function(i):
                     content = ""
                 reading_content = not reading_content
             elif not reading_content:
-                line_number = 10 * line_number + (ord(response[i]) - '0')
+                line_number = 10 * line_number + (ord(response[i]) - ord('0'))
             else:
                 content += response[i]
 
@@ -70,9 +70,12 @@ def worker_function(i):
 def sending_function():
     while True:
         if not sending_data.empty():
-            data = sending_data.get()
+            data=sending_data.get()
             for client in sending_client_sockets:
-                client.send(str.encode(data))
+                try:
+                    client.send(str.encode(data))
+                except:
+                    print(f"Failed to send line")
 
 
 def receive_response():
@@ -111,16 +114,16 @@ def connect_to_client(cmd_arg):
         return
     ip_address = tokens[0]
     port = int(tokens[1])
-    try:
-        global connected_clients
-        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (connected_clients,)))
-        receiving_threads[connected_clients].start()
-        sending_client_sockets.append(socket.socket())
-        sending_client_sockets[connected_clients].connect((ip_address, port))
-        connected_clients += 1
-        print("Connected to client", ip_address)
-    except:
-        print("Error connecting to client", ip_address)
+    # try:
+    global connected_clients
+    receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (connected_clients,)))
+    receiving_threads[connected_clients].start()
+    sending_client_sockets.append(socket.socket())
+    sending_client_sockets[connected_clients].connect((ip_address, port))
+    connected_clients += 1
+    print("Connected to client", ip_address)
+    # except:
+    #     print("Error connecting to client", ip_address)
 
 
 def infinite_requests():
@@ -140,8 +143,12 @@ def infinite_requests():
                 if reading_content:
                     if line_number not in lines and line_number >= 0 and line_number < MAX_LINES:
                         lines[line_number] = content
+                        # sending_data.put(str(line_number)+"\n"+content+"\n")
                         for client in sending_client_sockets:
-                            client.send(str.encode(str(line_number)+"\n"+content+"\n"))
+                            try:
+                                client.send(str.encode(str(line_number)+"\n"+content+"\n"))
+                            except:
+                                print(f"Failed to send line {line_number}")
                     line_number = 0
                     content = ""
                     completed_line = True
@@ -234,7 +241,7 @@ def handle_command(cmd):
 
 
 def start_command():
-    connect_to_server("10.17.6.5:9801")
+    connect_to_server("10.17.7.134:9801")
     try:
         while True:
             cmd = input()
