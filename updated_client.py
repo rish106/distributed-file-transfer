@@ -1,5 +1,6 @@
 import socket
-import time
+import sys
+from time import perf_counter
 import threading
 from queue import Queue
 
@@ -7,9 +8,10 @@ lines = {}
 
 MAX_LINES = 1000
 
-clients_info = ["10.194.7.175:10000"]
+clients_info = ["10.194.3.13:10001", "10.194.23.170:10001", "10.194.27.147:10000"]
 # clients_info = []
 OTHER_CLIENTS = len(clients_info)
+lines_received = []
 
 connected_clients = 0
 
@@ -27,21 +29,6 @@ receiving_client_sockets = []
 # threads receiving and processing the lines from other clients
 receiving_threads = []
 
-print("Created receiving sockets at ports:")
-for i in range(OTHER_CLIENTS):
-    client_socket=socket.socket()
-    
-    host = ""
-    port = 10000 + i
-    print(port, end = "")
-    if i == OTHER_CLIENTS - 1:
-        print()
-    else:
-        print(" ", end = "")
-    client_socket.bind((host, port))
-    client_socket.listen(5)
-    receiving_client_sockets.append(client_socket)
-
 sending_data = Queue()
 
 
@@ -54,35 +41,40 @@ def worker_function(i):
     while True:
         data = conn.recv(4096)
         response = data.decode("utf-8")
-        for i in range(len(response)):
-            if response[i] == '\n':
+        for j in range(len(response)):
+            if response[j] == '\n':
                 if reading_content:
+                    global lines_received
                     lines[line_number] = content
+                    lines_received[i] += 1
                     line_number = 0
                     content = ""
                 reading_content = not reading_content
             elif not reading_content:
-                line_number = 10 * line_number + (ord(response[i]) - ord('0'))
+                line_number = 10 * line_number + (ord(response[j]) - ord('0'))
             else:
-                content += response[i]
-
+                content += response[j]
 
 def sending_function():
     while True:
         if not sending_data.empty():
-            data=sending_data.get()
+            data = sending_data.get()
             for client in sending_client_sockets:
                 try:
                     client.send(str.encode(data))
                 except:
-                    print(f"Failed to send line")
+                    pass
+                    # print(f"Failed to send line {line_number}")
 
 
 def receive_response():
     data = server_conn.recv(4096)
     response = data.decode("utf-8")
     if len(response) == 0:
-        return receive_response()
+        try:
+            return receive_response()
+        except:
+            return ""
     else:
         return response
 
@@ -114,22 +106,26 @@ def connect_to_client(cmd_arg):
         return
     ip_address = tokens[0]
     port = int(tokens[1])
-    # try:
-    global connected_clients
-    receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (connected_clients,)))
-    receiving_threads[connected_clients].start()
-    sending_client_sockets.append(socket.socket())
-    sending_client_sockets[connected_clients].connect((ip_address, port))
-    connected_clients += 1
-    print("Connected to client", ip_address)
-    # except:
-    #     print("Error connecting to client", ip_address)
+    try:
+        global connected_clients
+        sending_client_sockets.append(socket.socket())
+        sending_client_sockets[connected_clients].connect((ip_address, port))
+        connected_clients += 1
+        print("Connected to client", ip_address)
+    except:
+        print("Error connecting to client", ip_address)
+
+
+def write_to_file(filename, line):
+    with open(filename, "a") as file:
+        sys.stdout = file
+        print(line)
+        sys.stdout = sys.__stdout__
 
 
 def infinite_requests():
-    actual_start = time.time()
-    start = time.time()
-    total_time = 0
+    start = perf_counter()
+    curr_mul = 1
     total_requests = 0
     line_number = 0
     content = ""
@@ -137,21 +133,23 @@ def infinite_requests():
     completed_line = False
     def receive_line():
         nonlocal content, line_number, reading_content, total_requests, completed_line
-        response = receive_response()
+        data = server_conn.recv(4096)
+        response = data.decode("utf-8")
         for i in range(len(response)):
             if response[i] == '\n':
                 if reading_content:
                     if line_number not in lines and line_number >= 0 and line_number < MAX_LINES:
                         lines[line_number] = content
-                        # sending_data.put(str(line_number)+"\n"+content+"\n")
+                        # sending_data.put(str(line_number) + "\n" + content + "\n")
                         for client in sending_client_sockets:
                             try:
-                                client.send(str.encode(str(line_number)+"\n"+content+"\n"))
+                                client.send(str.encode(f"{line_number}\n{content}\n"))
                             except:
                                 print(f"Failed to send line {line_number}")
                     line_number = 0
                     content = ""
                     completed_line = True
+                    total_requests += 1
                 reading_content = not reading_content
             elif not reading_content:
                 line_number = 10 * line_number + (ord(response[i]) - ord('0'))
@@ -159,22 +157,28 @@ def infinite_requests():
                 content += response[i]
     while len(lines) < MAX_LINES:
         server_conn.send(str.encode("SENDLINE\n"))
-        total_requests += 1
-        curr = time.time()
-        if (curr - start >= 5):
-            start = curr
-            total_time += 5
-            print(len(lines), total_time)
+        elapsed_time = perf_counter() - start
+        if (elapsed_time >= 2 * curr_mul):
+            curr_mul += 1
+            write_to_file("output.txt", f"{len(lines)} {elapsed_time}")
         completed_line = False
         while not completed_line:
             receive_line()
     else:
-        print(f"Completed in {time.time() - actual_start} seconds with {total_requests} requests from this client")
+        print(f"Completed in {perf_counter() - start} seconds with {total_requests} requests from this client")
+        write_to_file("output.txt", f"{len(lines)} {elapsed_time}")
         submit_lines()
+        if len(lines_received) > 0:
+            print("Received lines from other clients: ", end = "")
+        for i in lines_received:
+            print(i, end = " ")
+        print()
+        for i in range(len(lines_received)):
+            lines_received[i] = 0
 
 
 def submit_lines():
-    submit_data = "SUBMIT\n" + ENTRY_NUMBER + "@" + TEAM_NAME + "\n"
+    submit_data = f"SUBMIT\n{ENTRY_NUMBER}@{TEAM_NAME}\n"
     submit_data += str(len(lines)) + "\n"
     line_list = []
     for i in lines:
@@ -240,8 +244,27 @@ def handle_command(cmd):
     return True
 
 
+def init():
+    print("Created receiving sockets at ports:")
+    for i in range(OTHER_CLIENTS):
+        client_socket = socket.socket()
+        lines_received.append(0)
+        host = ""
+        port = 10000 + i
+        print(port, end = "")
+        if i == OTHER_CLIENTS - 1:
+            print()
+        else:
+            print(" ", end = "")
+        client_socket.bind((host, port))
+        client_socket.listen(5)
+        receiving_client_sockets.append(client_socket)
+        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (i,)))
+        receiving_threads[i].start()
+
+
 def start_command():
-    connect_to_server("10.17.7.134:9801")
+    connect_to_server("10.237.26.109:9801")
     try:
         while True:
             cmd = input()
@@ -262,4 +285,5 @@ def start_command():
 # sending_thread.start()
 
 
+init()
 start_command()
