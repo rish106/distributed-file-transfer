@@ -92,8 +92,6 @@ def connect_to_client(cmd_arg):
     port = int(tokens[1])
     try:
         global connected_clients
-        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (connected_clients,)))
-        receiving_threads[connected_clients].start()
         sending_client_sockets.append(socket.socket())
         sending_client_sockets[connected_clients].connect((ip_address, port))
         connected_clients += 1
@@ -135,7 +133,11 @@ def infinite_requests():
             else:
                 content += response[i]
     while len(lines) < MAX_LINES:
-        server_conn.send(str.encode("SENDLINE\n"))
+        try:
+            server_conn.send(str.encode("SENDLINE\n"))
+        except:
+            print("Error sending command to server, make sure the server is connected")
+            return
         completed_line = False
         while not completed_line:
             receive_line()
@@ -243,6 +245,8 @@ def init():
         client_socket.bind((host, port))
         client_socket.listen(5)
         receiving_client_sockets.append(client_socket)
+        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (i,)))
+        receiving_threads[i].start()
 
 
 def start_command():
