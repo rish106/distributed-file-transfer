@@ -29,10 +29,7 @@ stop_event = threading.Event()
 
 
 def worker_function(i):
-    try:
-        conn, address = receiving_client_sockets[i].accept()
-    except:
-        return
+    conn, address = receiving_client_sockets[i].accept()
     line_number = 0
     content = ""
     reading_content = False
@@ -95,6 +92,8 @@ def connect_to_client(cmd_arg):
     port = int(tokens[1])
     try:
         global connected_clients
+        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (connected_clients,)))
+        receiving_threads[connected_clients].start()
         sending_client_sockets.append(socket.socket())
         sending_client_sockets[connected_clients].connect((ip_address, port))
         connected_clients += 1
@@ -244,8 +243,6 @@ def init():
         client_socket.bind((host, port))
         client_socket.listen(5)
         receiving_client_sockets.append(client_socket)
-        receiving_threads.append(threading.Thread(target = worker_function, daemon = True, args = (i,)))
-        receiving_threads[i].start()
 
 
 def start_command():
